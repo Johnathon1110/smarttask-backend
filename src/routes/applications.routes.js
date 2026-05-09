@@ -363,6 +363,41 @@ router.patch('/:id/status', authMiddleware, allowRoles('owner'), async (req, res
               AND id <> @applicationId
               AND status = 'pending'
           `);
+
+        const existingConversationRequest = new sql.Request(transaction);
+
+        const existingConversation = await existingConversationRequest
+          .input('taskId', sql.Int, appRow.taskId)
+          .input('ownerId', sql.Int, appRow.ownerId)
+          .input('workerId', sql.Int, appRow.workerId)
+          .query(`
+            SELECT id
+            FROM ChatConversations
+            WHERE taskId = @taskId
+              AND ownerId = @ownerId
+              AND workerId = @workerId
+          `);
+
+        if (existingConversation.recordset.length === 0) {
+          const createConversationRequest = new sql.Request(transaction);
+
+          await createConversationRequest
+            .input('taskId', sql.Int, appRow.taskId)
+            .input('ownerId', sql.Int, appRow.ownerId)
+            .input('workerId', sql.Int, appRow.workerId)
+            .query(`
+              INSERT INTO ChatConversations (
+                taskId,
+                ownerId,
+                workerId
+              )
+              VALUES (
+                @taskId,
+                @ownerId,
+                @workerId
+              )
+            `);
+        }
       }
 
       const notificationTitle = status === 'accepted'
@@ -370,7 +405,7 @@ router.patch('/:id/status', authMiddleware, allowRoles('owner'), async (req, res
         : 'Application Rejected';
 
       const notificationMessage = status === 'accepted'
-        ? 'Your application has been accepted.'
+        ? 'Your application has been accepted. You can now chat with the task owner.'
         : 'Your application has been rejected.';
 
       const createNotificationRequest = new sql.Request(transaction);

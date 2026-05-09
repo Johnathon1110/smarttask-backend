@@ -40,10 +40,13 @@ async function getUserByEmail(pool, email) {
 async function upsertUser(pool, user) {
   const existing = await getUserByEmail(pool, user.email);
 
+  const passwordHash = await hashPassword(user.password || PASSWORD);
+
   if (existing) {
     await pool.request()
       .input('id', sql.Int, existing.id)
       .input('fullName', sql.NVarChar(200), user.fullName)
+      .input('passwordHash', sql.NVarChar(sql.MAX), passwordHash)
       .input('role', sql.NVarChar(50), user.role)
       .input('phone', sql.NVarChar(50), user.phone || null)
       .input('location', sql.NVarChar(200), user.location || null)
@@ -55,6 +58,7 @@ async function upsertUser(pool, user) {
         UPDATE Users
         SET
           fullName = @fullName,
+          passwordHash = @passwordHash,
           role = @role,
           phone = @phone,
           location = @location,
@@ -73,12 +77,10 @@ async function upsertUser(pool, user) {
     };
   }
 
-  const passwordHash = await hashPassword(user.password || PASSWORD);
-
   const result = await pool.request()
     .input('fullName', sql.NVarChar(200), user.fullName)
     .input('email', sql.NVarChar(255), user.email)
-    .input('password', sql.NVarChar(sql.MAX), passwordHash)
+    .input('passwordHash', sql.NVarChar(sql.MAX), passwordHash)
     .input('role', sql.NVarChar(50), user.role)
     .input('phone', sql.NVarChar(50), user.phone || null)
     .input('location', sql.NVarChar(200), user.location || null)
@@ -90,7 +92,7 @@ async function upsertUser(pool, user) {
       INSERT INTO Users (
         fullName,
         email,
-        password,
+        passwordHash,
         role,
         phone,
         location,
@@ -103,7 +105,7 @@ async function upsertUser(pool, user) {
       VALUES (
         @fullName,
         @email,
-        @password,
+        @passwordHash,
         @role,
         @phone,
         @location,
@@ -229,6 +231,17 @@ async function upsertApplication(pool, taskId, workerId, status = 'accepted') {
         SET status = @status
         WHERE id = @id
       `);
+
+    if (status === 'accepted') {
+      await pool.request()
+        .input('taskId', sql.Int, taskId)
+        .query(`
+          UPDATE Tasks
+          SET status = 'in-progress',
+              updatedAt = SYSDATETIME()
+          WHERE id = @taskId
+        `);
+    }
 
     return {
       ...existing.recordset[0],
