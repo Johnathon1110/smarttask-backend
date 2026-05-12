@@ -33,7 +33,8 @@ router.get('/stats', authMiddleware, allowRoles('admin'), async (req, res) => {
         (SELECT COUNT(*) FROM Reviews) AS totalReviews,
         (SELECT COUNT(*) FROM Notifications) AS totalNotifications,
         (SELECT COUNT(*) FROM ChatConversations) AS totalConversations,
-        (SELECT COUNT(*) FROM ChatMessages) AS totalMessages
+        (SELECT COUNT(*) FROM ChatMessages) AS totalMessages,
+        (SELECT COUNT(*) FROM TaskInvitations) AS totalInvitations
     `);
 
     return res.json({
@@ -231,6 +232,15 @@ router.delete('/users/:id', authMiddleware, allowRoles('admin'), async (req, res
           DELETE FROM Notifications
           WHERE userId = @userId;
 
+          DELETE FROM TaskInvitations
+          WHERE ownerId = @userId
+             OR workerId = @userId
+             OR taskId IN (
+               SELECT id
+               FROM Tasks
+               WHERE ownerId = @userId
+             );
+
           DELETE FROM Tasks
           WHERE ownerId = @userId;
 
@@ -313,6 +323,9 @@ router.delete('/tasks/:id', authMiddleware, allowRoles('admin'), async (req, res
           WHERE taskId = @taskId;
 
           DELETE FROM Applications
+          WHERE taskId = @taskId;
+
+          DELETE FROM TaskInvitations
           WHERE taskId = @taskId;
 
           DELETE FROM Tasks
