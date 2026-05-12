@@ -67,7 +67,6 @@ router.get('/users', authMiddleware, allowRoles('admin'), async (req, res) => {
         location,
         skills,
         experience,
-        availability,
         rating,
         createdAt,
         updatedAt

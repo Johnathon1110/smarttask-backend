@@ -46,7 +46,6 @@ function formatWorker(row) {
     location: row.workerLocation,
     skills: parseJsonArray(row.workerSkills),
     experience: row.workerExperience,
-    availability: row.workerAvailability,
     rating: row.workerRating
   };
 }
@@ -92,7 +91,7 @@ router.post('/', authMiddleware, allowRoles('worker'), async (req, res) => {
     const taskResult = await pool.request()
       .input('taskId', sql.Int, Number(taskId))
       .query(`
-        SELECT id, status
+        SELECT id, title, ownerId, status
         FROM Tasks
         WHERE id = @taskId
       `);
@@ -104,7 +103,9 @@ router.post('/', authMiddleware, allowRoles('worker'), async (req, res) => {
       });
     }
 
-    if (taskResult.recordset[0].status !== 'open') {
+    const task = taskResult.recordset[0];
+
+    if (task.status !== 'open') {
       return res.status(400).json({
         success: false,
         message: 'You can only apply to open tasks'
@@ -129,6 +130,15 @@ router.post('/', authMiddleware, allowRoles('worker'), async (req, res) => {
           @coverLetter,
           'pending'
         )
+      `);
+
+    await pool.request()
+      .input('userId', sql.Int, task.ownerId)
+      .input('title', sql.NVarChar(200), 'New Application Received')
+      .input('message', sql.NVarChar(sql.MAX), `A worker applied to your task: ${task.title}`)
+      .query(`
+        INSERT INTO Notifications (userId, title, message)
+        VALUES (@userId, @title, @message)
       `);
 
     return res.status(201).json({
@@ -252,7 +262,6 @@ router.get('/task/:taskId', authMiddleware, allowRoles('owner'), async (req, res
           u.location AS workerLocation,
           u.skills AS workerSkills,
           u.experience AS workerExperience,
-          u.availability AS workerAvailability,
           u.rating AS workerRating
         FROM Applications a
         INNER JOIN Users u ON a.workerId = u.id

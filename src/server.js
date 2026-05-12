@@ -13,6 +13,7 @@ const reviewsRoutes = require('./routes/reviews.routes');
 const recommendationsRoutes = require('./routes/recommendations.routes');
 const chatRoutes = require('./routes/chat.routes');
 const adminRoutes = require('./routes/admin.routes');
+const invitationsRoutes = require('./routes/invitations.routes');
 
 const app = express();
 
@@ -55,6 +56,7 @@ app.use('/api/reviews', reviewsRoutes);
 app.use('/api/recommendations', recommendationsRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/invitations', invitationsRoutes);
 
 const PORT = process.env.PORT || 5000;
 

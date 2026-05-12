@@ -30,7 +30,6 @@ function formatUser(row) {
     location: row.location,
     skills: parseJsonArray(row.skills),
     experience: row.experience,
-    availability: row.availability,
     rating: row.rating
   };
 }
@@ -63,8 +62,7 @@ router.post('/register', async (req, res) => {
       phone,
       location,
       skills,
-      experience,
-      availability
+      experience
     } = req.body;
 
     if (!fullName || !email || !password || !role) {
@@ -110,7 +108,6 @@ router.post('/register', async (req, res) => {
       .input('location', sql.NVarChar(150), location || null)
       .input('skills', sql.NVarChar(sql.MAX), skillsJson)
       .input('experience', sql.NVarChar(150), experience || null)
-      .input('availability', sql.NVarChar(150), availability || null)
       .query(`
         INSERT INTO Users (
           fullName,
@@ -120,8 +117,7 @@ router.post('/register', async (req, res) => {
           phone,
           location,
           skills,
-          experience,
-          availability
+          experience
         )
         OUTPUT INSERTED.*
         VALUES (
@@ -132,8 +128,7 @@ router.post('/register', async (req, res) => {
           @phone,
           @location,
           @skills,
-          @experience,
-          @availability
+          @experience
         )
       `);
 

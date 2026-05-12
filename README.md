@@ -1,7 +1,8 @@
 # SmartTask Connect - Backend
 
-SmartTask Connect is a web-based platform that connects task owners with temporary workers.  
-The backend provides authentication, task management, applications, recommendations, notifications, reviews, and chat APIs.
+SmartTask Connect is a web-based platform that connects task owners with temporary workers.
+
+This backend provides REST APIs for authentication, users, tasks, applications, skill-based match score, notifications, reviews, chat, and admin management.
 
 ## Technologies Used
 
@@ -9,30 +10,34 @@ The backend provides authentication, task management, applications, recommendati
 - Express.js
 - Microsoft SQL Server
 - JWT Authentication
-- bcrypt / bcryptjs
+- bcryptjs
 - dotenv
+- CORS
 
-## Project Structure
+## Main Features
+
+- User registration and login
+- Role-based access control: Worker, Task Owner, Admin
+- Task creation and management
+- Worker applications
+- Accept or reject applications
+- Skill-based match score for tasks and workers
+- Worker invitation notifications
+- Notifications system
+- Chat between accepted task owners and workers
+- Reviews and ratings
+- Admin dashboard APIs for users and tasks
+
+## Match Score Logic
+
+The system calculates a skill-based match score by comparing the required skills of a task with the skills stored in the worker profile.
+
+Example:
 
 ```text
-src/
-├── config/
-│   └── db.js
-├── database/
-│   └── schema.sql
-├── middleware/
-│   └── auth.middleware.js
-├── routes/
-│   ├── admin.routes.js
-│   ├── applications.routes.js
-│   ├── auth.routes.js
-│   ├── chat.routes.js
-│   ├── notifications.routes.js
-│   ├── recommendations.routes.js
-│   ├── reviews.routes.js
-│   ├── tasks.routes.js
-│   └── users.routes.js
-├── seed/
-│   └── seed.js
-└── server.js
+Task required skills: Delivery, Time Management
+Worker skills: Delivery, Cleaning
+
+Matched skills: Delivery
+Match score: 1 / 2 * 100 = 50%
 ```

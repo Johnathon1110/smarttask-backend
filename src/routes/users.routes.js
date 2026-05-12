@@ -28,7 +28,6 @@ function formatUser(row) {
     location: row.location,
     skills: parseJsonArray(row.skills),
     experience: row.experience,
-    availability: row.availability,
     rating: row.rating
   };
 }
@@ -42,7 +41,7 @@ router.get('/', authMiddleware, allowRoles('admin'), async (req, res) => {
     const pool = await getPool();
 
     const result = await pool.request().query(`
-      SELECT id, fullName, email, role, phone, location, skills, experience, availability, rating
+      SELECT id, fullName, email, role, phone, location, skills, experience, rating
       FROM Users
       ORDER BY id DESC
     `);
@@ -69,7 +68,7 @@ router.get('/workers', authMiddleware, async (req, res) => {
     const pool = await getPool();
 
     const result = await pool.request().query(`
-      SELECT id, fullName, email, role, phone, location, skills, experience, availability, rating
+      SELECT id, fullName, email, role, phone, location, skills, experience, rating
       FROM Users
       WHERE role = 'worker'
       ORDER BY rating DESC, id DESC
@@ -108,7 +107,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
     const result = await pool.request()
       .input('id', sql.Int, userId)
       .query(`
-        SELECT id, fullName, email, role, phone, location, skills, experience, availability, rating
+        SELECT id, fullName, email, role, phone, location, skills, experience, rating
         FROM Users
         WHERE id = @id
       `);
@@ -144,8 +143,7 @@ router.put('/me', authMiddleware, async (req, res) => {
       phone,
       location,
       skills,
-      experience,
-      availability
+      experience
     } = req.body;
 
     const skillsJson = Array.isArray(skills) ? JSON.stringify(skills) : JSON.stringify([]);
@@ -159,7 +157,6 @@ router.put('/me', authMiddleware, async (req, res) => {
       .input('location', sql.NVarChar(150), location || null)
       .input('skills', sql.NVarChar(sql.MAX), skillsJson)
       .input('experience', sql.NVarChar(150), experience || null)
-      .input('availability', sql.NVarChar(150), availability || null)
       .query(`
         UPDATE Users
         SET
@@ -168,11 +165,10 @@ router.put('/me', authMiddleware, async (req, res) => {
           location = @location,
           skills = @skills,
           experience = @experience,
-          availability = @availability,
           updatedAt = SYSDATETIME()
         OUTPUT INSERTED.id, INSERTED.fullName, INSERTED.email, INSERTED.role,
                INSERTED.phone, INSERTED.location, INSERTED.skills,
-               INSERTED.experience, INSERTED.availability, INSERTED.rating
+               INSERTED.experience, INSERTED.rating
         WHERE id = @id
       `);
 

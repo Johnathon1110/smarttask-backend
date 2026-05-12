@@ -52,7 +52,6 @@ async function upsertUser(pool, user) {
       .input('location', sql.NVarChar(200), user.location || null)
       .input('skills', sql.NVarChar(sql.MAX), toJson(user.skills || []))
       .input('experience', sql.NVarChar(sql.MAX), user.experience || null)
-      .input('availability', sql.NVarChar(200), user.availability || null)
       .input('rating', sql.Float, Number(user.rating || 0))
       .query(`
         UPDATE Users
@@ -64,7 +63,6 @@ async function upsertUser(pool, user) {
           location = @location,
           skills = @skills,
           experience = @experience,
-          availability = @availability,
           rating = @rating,
           updatedAt = SYSDATETIME()
         WHERE id = @id
@@ -86,7 +84,6 @@ async function upsertUser(pool, user) {
     .input('location', sql.NVarChar(200), user.location || null)
     .input('skills', sql.NVarChar(sql.MAX), toJson(user.skills || []))
     .input('experience', sql.NVarChar(sql.MAX), user.experience || null)
-    .input('availability', sql.NVarChar(200), user.availability || null)
     .input('rating', sql.Float, Number(user.rating || 0))
     .query(`
       INSERT INTO Users (
@@ -98,7 +95,6 @@ async function upsertUser(pool, user) {
         location,
         skills,
         experience,
-        availability,
         rating
       )
       OUTPUT INSERTED.*
@@ -111,7 +107,6 @@ async function upsertUser(pool, user) {
         @location,
         @skills,
         @experience,
-        @availability,
         @rating
       )
     `);
@@ -252,7 +247,7 @@ async function upsertApplication(pool, taskId, workerId, status = 'accepted') {
   const result = await pool.request()
     .input('taskId', sql.Int, taskId)
     .input('workerId', sql.Int, workerId)
-    .input('coverLetter', sql.NVarChar(sql.MAX), 'Seed application: I am available and qualified for this task.')
+    .input('coverLetter', sql.NVarChar(sql.MAX), 'Seed application: I am qualified for this task.')
     .input('status', sql.NVarChar(50), status)
     .query(`
       INSERT INTO Applications (
@@ -492,7 +487,6 @@ async function seed() {
     location: 'Cairo',
     skills: ['Delivery', 'Cleaning', 'Testing'],
     experience: '1 year',
-    availability: 'Evening',
     rating: 5
   });
 
@@ -560,7 +554,7 @@ async function seed() {
     pool,
     conversation.id,
     worker.id,
-    'Hello Sara, I received your message and I am available.'
+    'Hello Sara, I received your message.'
   );
 
   await upsertNotification(

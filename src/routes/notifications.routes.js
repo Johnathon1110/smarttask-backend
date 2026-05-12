@@ -1,7 +1,7 @@
 const express = require('express');
 
 const { sql, getPool } = require('../config/db');
-const { authMiddleware } = require('../middleware/auth.middleware');
+const { authMiddleware, allowRoles } = require('../middleware/auth.middleware');
 
 const router = express.Router();
 
@@ -43,6 +43,107 @@ router.get('/', authMiddleware, async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to get notifications',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/notifications/invite-worker
+ * Owner only: sends an invitation notification to a matched worker.
+ */
+router.post('/invite-worker', authMiddleware, allowRoles('owner'), async (req, res) => {
+  try {
+    const taskId = Number(req.body.taskId);
+    const workerId = Number(req.body.workerId);
+
+    if (!Number.isInteger(taskId) || !Number.isInteger(workerId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid taskId and workerId are required'
+      });
+    }
+
+    const pool = await getPool();
+
+    const taskResult = await pool.request()
+      .input('taskId', sql.Int, taskId)
+      .input('ownerId', sql.Int, req.user.id)
+      .query(`
+        SELECT id, title, ownerId
+        FROM Tasks
+        WHERE id = @taskId
+          AND ownerId = @ownerId
+      `);
+
+    if (taskResult.recordset.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found or you do not own this task'
+      });
+    }
+
+    const workerResult = await pool.request()
+      .input('workerId', sql.Int, workerId)
+      .query(`
+        SELECT id, fullName, role
+        FROM Users
+        WHERE id = @workerId
+          AND role = 'worker'
+      `);
+
+    if (workerResult.recordset.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Worker not found'
+      });
+    }
+
+    const task = taskResult.recordset[0];
+
+    const title = 'Task Invitation';
+    const message = `You have been invited to apply for task: ${task.title}`;
+
+    const duplicateCheck = await pool.request()
+      .input('userId', sql.Int, workerId)
+      .input('title', sql.NVarChar(200), title)
+      .input('message', sql.NVarChar(sql.MAX), message)
+      .query(`
+        SELECT TOP 1 id
+        FROM Notifications
+        WHERE userId = @userId
+          AND title = @title
+          AND message = @message
+        ORDER BY id DESC
+      `);
+
+    if (duplicateCheck.recordset.length > 0) {
+      return res.json({
+        success: true,
+        message: 'Worker has already been invited to this task.'
+      });
+    }
+
+    const result = await pool.request()
+      .input('userId', sql.Int, workerId)
+      .input('title', sql.NVarChar(200), title)
+      .input('message', sql.NVarChar(sql.MAX), message)
+      .query(`
+        INSERT INTO Notifications (userId, title, message)
+        OUTPUT INSERTED.id, INSERTED.userId, INSERTED.title,
+               INSERTED.message, INSERTED.createdAt, INSERTED.isRead
+        VALUES (@userId, @title, @message)
+      `);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Invitation sent successfully.',
+      notification: formatNotification(result.recordset[0])
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to invite worker',
       error: error.message
     });
   }

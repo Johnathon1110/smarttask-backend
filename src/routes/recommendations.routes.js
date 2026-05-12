@@ -6,13 +6,22 @@ const { authMiddleware, allowRoles } = require('../middleware/auth.middleware');
 const router = express.Router();
 
 function parseJsonArray(value) {
-  if (!value) return [];
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value;
+  }
 
   try {
     const parsed = JSON.parse(value);
     return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return [];
+    return String(value)
+      .split(',')
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
   }
 }
 
@@ -20,89 +29,44 @@ function normalizeText(value) {
   return String(value || '').trim().toLowerCase();
 }
 
-/**
- * Skills are the main factor.
- * Score: up to 70 points.
- */
-function calculateSkillsScore(workerSkills, requiredSkills) {
-  if (!Array.isArray(requiredSkills) || requiredSkills.length === 0) {
-    return 40;
-  }
-
-  if (!Array.isArray(workerSkills) || workerSkills.length === 0) {
-    return 0;
+function getMatchedSkills(workerSkills, requiredSkills) {
+  if (!Array.isArray(workerSkills) || !Array.isArray(requiredSkills)) {
+    return [];
   }
 
   const workerSet = new Set(
-    workerSkills.map(skill => normalizeText(skill))
+    workerSkills.map((skill) => normalizeText(skill))
   );
 
-  const matchedCount = requiredSkills.filter(skill =>
+  return requiredSkills.filter((skill) =>
     workerSet.has(normalizeText(skill))
-  ).length;
-
-  return Math.round((matchedCount / requiredSkills.length) * 70);
+  );
 }
 
-/**
- * Location is a bonus factor.
- * Score: up to 10 points.
- * Remote tasks automatically get location points.
- */
-function calculateLocationScore(workerLocation, taskLocation, taskType) {
-  if (taskType === 'remote') {
-    return 10;
-  }
-
-  if (!workerLocation || !taskLocation) {
+function calculateMatchScore(workerSkills, requiredSkills) {
+  if (!Array.isArray(requiredSkills) || requiredSkills.length === 0) {
     return 0;
   }
 
-  return normalizeText(workerLocation) === normalizeText(taskLocation) ? 10 : 0;
+  const matchedSkills = getMatchedSkills(workerSkills, requiredSkills);
+
+  return Math.round((matchedSkills.length / requiredSkills.length) * 100);
 }
 
-/**
- * Availability is a bonus factor.
- * Score: 10 points if the worker has availability.
- */
-function calculateAvailabilityScore(availability) {
-  return availability ? 10 : 0;
-}
-
-/**
- * Rating is a bonus factor.
- * Score: up to 10 points.
- */
-function calculateRatingScore(rating) {
-  const numericRating = Number(rating || 0);
-
-  if (numericRating <= 0) return 0;
-
-  return Math.round((Math.min(numericRating, 5) / 5) * 10);
-}
-
-/**
- * Total match score out of 100:
- * Skills      = 70
- * Location    = 10
- * Availability= 10
- * Rating      = 10
- */
-function calculateMatchScore({ worker, task }) {
+function buildMatchData(worker, task) {
   const workerSkills = parseJsonArray(worker.skills);
   const requiredSkills = parseJsonArray(task.requiredSkills);
+  const matchedSkills = getMatchedSkills(workerSkills, requiredSkills);
+  const matchScore = calculateMatchScore(workerSkills, requiredSkills);
 
-  const skillsScore = calculateSkillsScore(workerSkills, requiredSkills);
-  const locationScore = calculateLocationScore(worker.location, task.location, task.type);
-  const availabilityScore = calculateAvailabilityScore(worker.availability);
-  const ratingScore = calculateRatingScore(worker.rating);
-
-  const total = skillsScore + locationScore + availabilityScore + ratingScore;
-
-  return Math.min(total, 100);
+  return {
+    matchScore,
+    matchedSkills,
+    matchReason: `${matchedSkills.length} of ${requiredSkills.length} required skills matched`
+  };
 }
 
-function formatTask(row, matchScore = null) {
+function formatTask(row, matchData = null) {
   const task = {
     id: row.id,
     title: row.title,
@@ -119,14 +83,16 @@ function formatTask(row, matchScore = null) {
     updatedAt: row.updatedAt
   };
 
-  if (matchScore !== null) {
-    task.matchScore = matchScore;
+  if (matchData) {
+    task.matchScore = matchData.matchScore;
+    task.matchedSkills = matchData.matchedSkills;
+    task.matchReason = matchData.matchReason;
   }
 
   return task;
 }
 
-function formatWorker(row, matchScore = null) {
+function formatWorker(row, matchData = null) {
   const worker = {
     id: row.id,
     fullName: row.fullName,
@@ -136,23 +102,18 @@ function formatWorker(row, matchScore = null) {
     location: row.location,
     skills: parseJsonArray(row.skills),
     experience: row.experience,
-    availability: row.availability,
     rating: row.rating
   };
 
-  if (matchScore !== null) {
-    worker.matchScore = matchScore;
+  if (matchData) {
+    worker.matchScore = matchData.matchScore;
+    worker.matchedSkills = matchData.matchedSkills;
+    worker.matchReason = matchData.matchReason;
   }
 
   return worker;
 }
 
-/**
- * GET /api/recommendations/tasks
- *
- * Worker only.
- * Returns recommended open tasks for the logged-in worker.
- */
 router.get('/tasks', authMiddleware, allowRoles('worker'), async (req, res) => {
   try {
     const pool = await getPool();
@@ -169,7 +130,6 @@ router.get('/tasks', authMiddleware, allowRoles('worker'), async (req, res) => {
           location,
           skills,
           experience,
-          availability,
           rating
         FROM Users
         WHERE id = @workerId
@@ -200,36 +160,27 @@ router.get('/tasks', authMiddleware, allowRoles('worker'), async (req, res) => {
         ORDER BY t.id DESC
       `);
 
-    const recommendedTasks = tasksResult.recordset
-      .map(task => {
-        const matchScore = calculateMatchScore({
-          worker,
-          task
-        });
-
-        return formatTask(task, matchScore);
+    const matchedTasks = tasksResult.recordset
+      .map((task) => {
+        const matchData = buildMatchData(worker, task);
+        return formatTask(task, matchData);
       })
+      .filter((task) => task.matchScore > 0)
       .sort((a, b) => b.matchScore - a.matchScore);
 
     return res.json({
       success: true,
-      recommendations: recommendedTasks
+      recommendations: matchedTasks
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Failed to get recommended tasks',
+      message: 'Failed to get matched tasks',
       error: error.message
     });
   }
 });
 
-/**
- * GET /api/recommendations/workers/:taskId
- *
- * Owner only.
- * Returns recommended workers for one task.
- */
 router.get('/workers/:taskId', authMiddleware, allowRoles('owner'), async (req, res) => {
   try {
     const taskId = Number(req.params.taskId);
@@ -274,7 +225,6 @@ router.get('/workers/:taskId', authMiddleware, allowRoles('owner'), async (req, 
           location,
           skills,
           experience,
-          availability,
           rating
         FROM Users
         WHERE role = 'worker'
@@ -287,26 +237,23 @@ router.get('/workers/:taskId', authMiddleware, allowRoles('owner'), async (req, 
           )
       `);
 
-    const recommendedWorkers = workersResult.recordset
-      .map(worker => {
-        const matchScore = calculateMatchScore({
-          worker,
-          task
-        });
-
-        return formatWorker(worker, matchScore);
+    const matchedWorkers = workersResult.recordset
+      .map((worker) => {
+        const matchData = buildMatchData(worker, task);
+        return formatWorker(worker, matchData);
       })
+      .filter((worker) => worker.matchScore > 0)
       .sort((a, b) => b.matchScore - a.matchScore);
 
     return res.json({
       success: true,
       task: formatTask(task),
-      recommendations: recommendedWorkers
+      recommendations: matchedWorkers
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Failed to get recommended workers',
+      message: 'Failed to get matched workers',
       error: error.message
     });
   }
