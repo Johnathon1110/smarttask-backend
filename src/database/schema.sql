@@ -72,6 +72,32 @@ BEGIN
 END
 GO
 
+IF OBJECT_ID('dbo.TaskInvitations', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.TaskInvitations (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        taskId INT NOT NULL,
+        ownerId INT NOT NULL,
+        workerId INT NOT NULL,
+        status NVARCHAR(30) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+        createdAt DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+        respondedAt DATETIME2 NULL,
+
+        CONSTRAINT FK_TaskInvitations_Tasks
+            FOREIGN KEY (taskId) REFERENCES dbo.Tasks(id),
+
+        CONSTRAINT FK_TaskInvitations_Users_Owner
+            FOREIGN KEY (ownerId) REFERENCES dbo.Users(id),
+
+        CONSTRAINT FK_TaskInvitations_Users_Worker
+            FOREIGN KEY (workerId) REFERENCES dbo.Users(id),
+
+        CONSTRAINT UQ_TaskInvitations_Task_Worker
+            UNIQUE (taskId, workerId)
+    );
+END
+GO
+
 IF OBJECT_ID('dbo.Notifications', 'U') IS NULL
 BEGIN
     CREATE TABLE dbo.Notifications (
