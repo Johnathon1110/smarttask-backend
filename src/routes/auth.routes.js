@@ -50,7 +50,8 @@ function createToken(user) {
 
 /**
  * POST /api/auth/register
- * Creates a new user account.
+ * Creates a new worker or task owner account.
+ * Admin accounts must be created manually through seed/database by the system owner.
  */
 router.post('/register', async (req, res) => {
   try {
@@ -72,10 +73,13 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    if (!['worker', 'owner', 'admin'].includes(role)) {
+    const normalizedRole = String(role).toLowerCase().trim();
+    const allowedPublicRoles = ['worker', 'owner'];
+
+    if (!allowedPublicRoles.includes(normalizedRole)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid role'
+        message: 'Invalid role. Public registration is allowed for worker and owner accounts only.'
       });
     }
 
@@ -103,7 +107,7 @@ router.post('/register', async (req, res) => {
       .input('fullName', sql.NVarChar(150), fullName)
       .input('email', sql.NVarChar(150), email)
       .input('passwordHash', sql.NVarChar(255), passwordHash)
-      .input('role', sql.NVarChar(20), role)
+      .input('role', sql.NVarChar(20), normalizedRole)
       .input('phone', sql.NVarChar(30), phone || null)
       .input('location', sql.NVarChar(150), location || null)
       .input('skills', sql.NVarChar(sql.MAX), skillsJson)

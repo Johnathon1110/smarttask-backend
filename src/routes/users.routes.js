@@ -32,6 +32,20 @@ function formatUser(row) {
   };
 }
 
+function formatPublicUser(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    fullName: row.fullName,
+    role: row.role,
+    location: row.location,
+    skills: parseJsonArray(row.skills),
+    experience: row.experience,
+    rating: row.rating
+  };
+}
+
 /**
  * GET /api/users
  * Admin only: returns all users.
@@ -61,9 +75,11 @@ router.get('/', authMiddleware, allowRoles('admin'), async (req, res) => {
 
 /**
  * GET /api/users/workers
- * Returns all worker users.
+ * Owner/Admin only: returns worker users.
+ * Admin receives full worker records.
+ * Owner receives public worker profiles only.
  */
-router.get('/workers', authMiddleware, async (req, res) => {
+router.get('/workers', authMiddleware, allowRoles('owner', 'admin'), async (req, res) => {
   try {
     const pool = await getPool();
 
@@ -76,7 +92,9 @@ router.get('/workers', authMiddleware, async (req, res) => {
 
     return res.json({
       success: true,
-      workers: result.recordset.map(formatUser)
+      workers: req.user.role === 'admin'
+        ? result.recordset.map(formatUser)
+        : result.recordset.map(formatPublicUser)
     });
   } catch (error) {
     return res.status(500).json({
@@ -90,6 +108,9 @@ router.get('/workers', authMiddleware, async (req, res) => {
 /**
  * GET /api/users/:id
  * Returns one user by id.
+ * Full profile is available only for self/admin.
+ * Owners can view public worker profiles.
+ * Workers can view public owner profiles.
  */
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
@@ -119,9 +140,29 @@ router.get('/:id', authMiddleware, async (req, res) => {
       });
     }
 
-    return res.json({
-      success: true,
-      user: formatUser(result.recordset[0])
+    const targetUser = result.recordset[0];
+    const isSelf = req.user.id === userId;
+    const isAdmin = req.user.role === 'admin';
+    const ownerViewingWorker = req.user.role === 'owner' && targetUser.role === 'worker';
+    const workerViewingOwner = req.user.role === 'worker' && targetUser.role === 'owner';
+
+    if (isSelf || isAdmin) {
+      return res.json({
+        success: true,
+        user: formatUser(targetUser)
+      });
+    }
+
+    if (ownerViewingWorker || workerViewingOwner) {
+      return res.json({
+        success: true,
+        user: formatPublicUser(targetUser)
+      });
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: 'You are not allowed to view this user profile'
     });
   } catch (error) {
     return res.status(500).json({
@@ -146,25 +187,25 @@ router.put('/me', authMiddleware, async (req, res) => {
       experience
     } = req.body;
 
-    const skillsJson = Array.isArray(skills) ? JSON.stringify(skills) : JSON.stringify([]);
+    const skillsJson = Array.isArray(skills) ? JSON.stringify(skills) : null;
 
     const pool = await getPool();
 
     const result = await pool.request()
       .input('id', sql.Int, req.user.id)
-      .input('fullName', sql.NVarChar(150), fullName || null)
-      .input('phone', sql.NVarChar(30), phone || null)
-      .input('location', sql.NVarChar(150), location || null)
+      .input('fullName', sql.NVarChar(150), fullName !== undefined ? fullName : null)
+      .input('phone', sql.NVarChar(30), phone !== undefined ? phone : null)
+      .input('location', sql.NVarChar(150), location !== undefined ? location : null)
       .input('skills', sql.NVarChar(sql.MAX), skillsJson)
-      .input('experience', sql.NVarChar(150), experience || null)
+      .input('experience', sql.NVarChar(150), experience !== undefined ? experience : null)
       .query(`
         UPDATE Users
         SET
           fullName = COALESCE(@fullName, fullName),
-          phone = @phone,
-          location = @location,
-          skills = @skills,
-          experience = @experience,
+          phone = COALESCE(@phone, phone),
+          location = COALESCE(@location, location),
+          skills = COALESCE(@skills, skills),
+          experience = COALESCE(@experience, experience),
           updatedAt = SYSDATETIME()
         OUTPUT INSERTED.id, INSERTED.fullName, INSERTED.email, INSERTED.role,
                INSERTED.phone, INSERTED.location, INSERTED.skills,

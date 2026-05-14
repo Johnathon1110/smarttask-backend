@@ -284,7 +284,7 @@ router.get('/task/:taskId', authMiddleware, allowRoles('owner'), async (req, res
 
 /**
  * PATCH /api/applications/:id/status
- * Owner only: accepts or rejects an application.
+ * Owner only: accepts or rejects a pending application.
  */
 router.patch('/:id/status', authMiddleware, allowRoles('owner'), async (req, res) => {
   try {
@@ -319,7 +319,8 @@ router.patch('/:id/status', authMiddleware, allowRoles('owner'), async (req, res
           t.ownerId
         FROM Applications a
         INNER JOIN Tasks t ON a.taskId = t.id
-        WHERE a.id = @applicationId AND t.ownerId = @ownerId
+        WHERE a.id = @applicationId
+          AND t.ownerId = @ownerId
       `);
 
     if (appCheck.recordset.length === 0) {
@@ -330,6 +331,13 @@ router.patch('/:id/status', authMiddleware, allowRoles('owner'), async (req, res
     }
 
     const appRow = appCheck.recordset[0];
+
+    if (appRow.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'This application has already been processed'
+      });
+    }
 
     const transaction = new sql.Transaction(pool);
 
@@ -346,7 +354,17 @@ router.patch('/:id/status', authMiddleware, allowRoles('owner'), async (req, res
           SET status = @status
           OUTPUT INSERTED.*
           WHERE id = @applicationId
+            AND status = 'pending'
         `);
+
+      if (updatedApplication.recordset.length === 0) {
+        await transaction.rollback();
+
+        return res.status(400).json({
+          success: false,
+          message: 'This application has already been processed'
+        });
+      }
 
       if (status === 'accepted') {
         const updateTaskRequest = new sql.Request(transaction);

@@ -17,7 +17,23 @@ const invitationsRoutes = require('./routes/invitations.routes');
 
 const app = express();
 
-app.use(cors());
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'http://localhost:4200',
+  'http://127.0.0.1:4200'
+].filter(Boolean);
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true
+}));
+
 app.use(express.json());
 
 app.use((req, res, next) => {
@@ -33,16 +49,17 @@ app.get('/api/health', async (req, res) => {
     const pool = await getPool();
     const result = await pool.request().query('SELECT 1 AS ok');
 
-    res.json({
+    return res.json({
       success: true,
       message: 'SmartTask backend is running',
       database: result.recordset[0].ok === 1 ? 'connected' : 'unknown'
     });
   } catch (error) {
-    res.status(500).json({
+    console.error('Health check database error:', error.message);
+
+    return res.status(500).json({
       success: false,
-      message: 'Backend is running but database connection failed',
-      error: error.message
+      message: 'Backend is running but database connection failed'
     });
   }
 });
