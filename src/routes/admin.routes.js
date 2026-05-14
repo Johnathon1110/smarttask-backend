@@ -5,10 +5,7 @@ const { authMiddleware, allowRoles } = require('../middleware/auth.middleware');
 
 const router = express.Router();
 
-/**
- * GET /api/admin/stats
- * Admin only: returns dashboard statistics.
- */
+
 router.get('/stats', authMiddleware, allowRoles('admin'), async (req, res) => {
   try {
     const pool = await getPool();
